@@ -52,7 +52,7 @@ func NewFilebeatPiloter(baseDir string) (Piloter, error) {
 		watchDone:      make(chan bool),
 		watchContainer: make(map[string]string, 0),
 		watchDuration:  60 * time.Second,
-		fbExit:         make(chan struct{})
+		fbExit:         make(chan struct{}),
 	}, nil
 }
 
@@ -178,9 +178,9 @@ func (p *FilebeatPiloter) newScan() error {
 	defer p.Start() 
 
 	b, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
-	states := make([]RegistryState, 0)
+	origStates := make([]RegistryState, 0)
 	newStates := make([]RegistryState, 0)
-	if err := json.Unmarshal(b, &states); err != nil {
+	if err := json.Unmarshal(b, &origStates); err != nil {
 		return err
 	}
 
@@ -196,7 +196,7 @@ func (p *FilebeatPiloter) newScan() error {
 	}
 
 	// 更新registry文件
-	for _, state := range states {
+	for _, state := range origStates {
 		if container, ok := delLogs[state.Source]; !ok {
 			//当前state不是destroying container的log，需要继续保留
 			newStates = append(newStates, state)
