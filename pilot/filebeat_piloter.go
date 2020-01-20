@@ -114,7 +114,7 @@ func (p *FilebeatPiloter) newWatch(cmd *exec.Cmd) error {
 			p.fbExit <- struct{}{}
 			return err
 		case <-time.After(p.watchDuration):
-			//log.Debugf("%s watcher scan", p.Name())
+			log.Debugf("%s watcher scan", p.Name())
 			err := p.newScan()
 			if err != nil {
 				log.Errorf("%s watcher scan error: %v", p.Name(), err)
@@ -160,6 +160,7 @@ func (p *FilebeatPiloter) newScan() error {
 	configPaths := p.loadConfigPaths()
 	delConfs := make(map[string]string)
 	delLogs := make(map[string]string)
+	log.Debuf("Will delete containers: ", p.watchContainer)
 	for container := range p.watchContainer {
 		confPath := p.GetConfPath(container)
 		if _, err := os.Stat(confPath); err != nil && os.IsNotExist(err) {
@@ -173,6 +174,7 @@ func (p *FilebeatPiloter) newScan() error {
 		}
 	}
 
+	log.Debug("Will delete conf: ", delConfs)
 	// 对filebeat进行container释放清理操作
 	p.Stop() //停止filebeat
 	<- p.fbExit  //等待filebeat退出
@@ -371,6 +373,8 @@ func (p *FilebeatPiloter) feed(containerID string) error {
 
 // Start starting and watching filebeat process
 func (p *FilebeatPiloter) Start() error {
+	log.Debug("Start the filebeat piloter")
+
 	if filebeat != nil {
 		pid := filebeat.Process.Pid
 		process, err := os.FindProcess(pid)
@@ -416,6 +420,7 @@ func (p *FilebeatPiloter) Start() error {
 
 // Stop log collection
 func (p *FilebeatPiloter) Stop() error {
+	log.Debug("Stop the filebeat piloter")
 	p.watchDone <- true
 	return nil
 }
