@@ -115,10 +115,12 @@ func (p *FilebeatPiloter) newWatch(cmd *exec.Cmd) error {
 			return err
 		case <-time.After(p.watchDuration):
 			log.Debugf("%s watcher scan", p.Name())
-			err := p.newScan()
-			if err != nil {
-				log.Errorf("%s watcher scan error: %v", p.Name(), err)
-			}
+			go func(){
+				err := p.newScan()
+				if err != nil {
+					log.Errorf("%s watcher scan error: %v", p.Name(), err)
+				}
+			}()
 		}
 	}
 }
@@ -160,7 +162,7 @@ func (p *FilebeatPiloter) newScan() error {
 	configPaths := p.loadConfigPaths()
 	delConfs := make(map[string]string)
 	delLogs := make(map[string]string)
-	log.Debuf("Will delete containers: ", p.watchContainer)
+	log.Debug("Will delete containers: ", p.watchContainer)
 	for container := range p.watchContainer {
 		confPath := p.GetConfPath(container)
 		if _, err := os.Stat(confPath); err != nil && os.IsNotExist(err) {
@@ -172,6 +174,10 @@ func (p *FilebeatPiloter) newScan() error {
 			//   不在循环中进行实际的文件删除动作，每次循环只记录要执行删除的container, 在循环结束后统一处理。
 			delConfs[confPath] = container
 		}
+	}
+	if len(delConfs) == 0 {
+		log.Debugf("No filebeat config will modify, current scan end")
+		return nil
 	}
 
 	log.Debug("Will delete conf: ", delConfs)
