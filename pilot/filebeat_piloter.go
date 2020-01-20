@@ -153,7 +153,8 @@ func (p *FilebeatPiloter) scan() error {
 func (p *FilebeatPiloter) newScan() error {
 	states, err := p.getRegsitryState()
 	if err != nil {
-		return nil
+		log.Error("Get registry error: ", err)
+		return err
 	}
 
 	configPaths := p.loadConfigPaths()
@@ -181,16 +182,19 @@ func (p *FilebeatPiloter) newScan() error {
 	origStates := make([]RegistryState, 0)
 	newStates := make([]RegistryState, 0)
 	if err := json.Unmarshal(b, &origStates); err != nil {
+		log.Error("json error: ", err)
 		return err
 	}
 
 	failDelContainers := make(map[string]bool)
 	// 删除detroyed container的配置文件
 	for delConf, container := range delConfs{
+		log.Debug("start remove conf: ", delConf)
 		if err := os.Remove(delConf); err != nil {
 			log.Errorf("remove log config %s.yml fail: %v", container, err)
 			failDelContainers[container] = true
 		}else{
+			log.Infof("%s removed", delConf)
 			delete(p.watchContainer, container)
 		}
 	}
@@ -209,11 +213,8 @@ func (p *FilebeatPiloter) newScan() error {
 	if err != nil {
 		return err
 	}
-	if err := ioutil.WriteFile(FILEBEAT_REGISTRY, nb, 0600); err != nil {
-		return err
-	}
-
-	return nil
+	log.Debug("Update registry, orig: %s, new: %s", string(b), string(nb))
+	return ioutil.WriteFile(FILEBEAT_REGISTRY, nb, 0600)
 }
 
 func (p *FilebeatPiloter) newCanRemoveConf(container string, registry map[string]RegistryState,
