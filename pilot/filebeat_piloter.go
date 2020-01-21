@@ -318,13 +318,15 @@ func (p *FilebeatPiloter) loadConfig(container string) (*Config, error) {
 		return nil, err
 	}
 
-	var configs [][]string
-	var paths []string
 	var config Config
+
+	var configs []Config
+	var paths []string
 	if err := c.Unpack(&configs); err != nil {
 		log.Errorf("parse %s.yml log config error: %v", container, err)
 		return nil, err
 	}
+
 	for _, pths := range configs {
 		paths = append(paths, pths...)
 	}
