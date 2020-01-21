@@ -168,11 +168,14 @@ func (p *FilebeatPiloter) newScan() error {
 		if _, err := os.Stat(confPath); err != nil && os.IsNotExist(err) {
 			log.Infof("log config %s.yml has been removed and ignore", container)
 			delete(p.watchContainer, container)
-		} else if p.newCanRemoveConf(container, states, configPaths, delLogs) {
+		} else if logm, b := p.newCanRemoveConf(container, states, configPaths); b{
 			// 在这里加入自定义的补充动作。
 			// 这里config文件的清理动作做一个调整：
 			//   不在循环中进行实际的文件删除动作，每次循环只记录要执行删除的container, 在循环结束后统一处理。
 			delConfs[confPath] = container
+			for log, c := range logm {
+				delLogs[log] = c
+			}
 		}
 	}
 	if len(delConfs) == 0 {
@@ -222,21 +225,26 @@ func (p *FilebeatPiloter) newScan() error {
 	if err != nil {
 		return err
 	}
-	log.Debugf("Update registry, orig: %v, new: %v", origStates, newStates)
+	log.Debug("Update registry: ")
+	log.Debug("Orig registry: ", origStates)
+	log.Debug("New registry: ", newStates)
 	return ioutil.WriteFile(FILEBEAT_REGISTRY, nb, 0600)
 }
 
 func (p *FilebeatPiloter) newCanRemoveConf(container string, registry map[string]RegistryState,
-	configPaths map[string]string, delLogs map[string]string) bool {
+	configPaths map[string]string) (map[string]string, bool) {
 	config, err := p.loadConfig(container)
 	if err != nil {
-		return false
+		return nil, false
 	}
 
+	delLogs := make(map[string]string)
 	for _, path := range config.Paths {
 		autoMount := p.isAutoMountPath(filepath.Dir(path))
 		logFiles, _ := filepath.Glob(path)
+		log.Debug("Glob log files: ", logFiles)
 		for _, logFile := range logFiles {
+			log.Debug("Start check log: ", logFile)
 			info, err := os.Stat(logFile)
 			if err != nil && os.IsNotExist(err) {
 				continue
@@ -248,18 +256,19 @@ func (p *FilebeatPiloter) newCanRemoveConf(container string, registry map[string
 			if registry[logFile].Offset < info.Size() {
 				if autoMount { // ephemeral(短暂的、瞬息的) logs
 					log.Infof("%s->%s does not finish to read", container, logFile)
-					return false
+					return nil, false
 				} else if _, ok := configPaths[path]; !ok { // host path bind
 					// 目前还不是很明白什么情况下会出现这个状况。
 					log.Infof("%s->%s does not finish to read and not exist in other config",
 						container, logFile)
-					return false
+					return nil, false
 				}
 			}
+			log.Debug("May delete log: ", logFile)
 			delLogs[logFile] = container
 		}
 	}
-	return true
+	return delLogs, true
 }
 
 func (p *FilebeatPiloter) canRemoveConf(container string, registry map[string]RegistryState,
