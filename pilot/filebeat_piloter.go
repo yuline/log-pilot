@@ -172,6 +172,7 @@ func (p *FilebeatPiloter) newScan() error {
 			// 在这里加入自定义的补充动作。
 			// 这里config文件的清理动作做一个调整：
 			//   不在循环中进行实际的文件删除动作，每次循环只记录要执行删除的container, 在循环结束后统一处理。
+			log.Debug("Will delete logs: ", logm)
 			delConfs[confPath] = container
 			for log, c := range logm {
 				delLogs[log] = c
@@ -235,9 +236,11 @@ func (p *FilebeatPiloter) newCanRemoveConf(container string, registry map[string
 	configPaths map[string]string) (map[string]string, bool) {
 	config, err := p.loadConfig(container)
 	if err != nil {
+		log.Error(err)
 		return nil, false
 	}
-
+	
+	log.Debug("Log path in conf: ", config.Paths)
 	delLogs := make(map[string]string)
 	for _, path := range config.Paths {
 		autoMount := p.isAutoMountPath(filepath.Dir(path))
