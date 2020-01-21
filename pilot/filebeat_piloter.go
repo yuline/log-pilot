@@ -160,6 +160,7 @@ func (p *FilebeatPiloter) newScan() error {
 	}
 
 	configPaths := p.loadConfigPaths()
+	log.Debug("configPaths: ", configPaths)
 	delConfs := make(map[string]string)
 	delLogs := make(map[string]string)
 	log.Debug("Will delete containers: ", p.watchContainer)
