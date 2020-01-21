@@ -53,6 +53,7 @@ func NewFilebeatPiloter(baseDir string) (Piloter, error) {
 		watchContainer: make(map[string]string, 0),
 		watchDuration:  60 * time.Second,
 		fbExit:         make(chan struct{}),
+		noticeStop:     make(chan bool, 1),
 	}, nil
 }
 
@@ -106,11 +107,14 @@ func (p *FilebeatPiloter) newWatch(cmd *exec.Cmd) error {
 		select {
 		case <-p.watchDone:
 			log.Infof("%s watcher stop", p.Name())
+			p.noticeStop <- true
+
 			err := cmd.Process.Kill()
 			if err != nil {
 				pgroup := 0 - cmd.Process.Pid
 				syscall.Kill(pgroup, syscall.SIGKILL)
 			}
+			time.Sleep(3 * time.Second) // wait a little
 			p.fbExit <- struct{}{}
 			return err
 		case <-time.After(p.watchDuration):
@@ -420,19 +424,36 @@ func (p *FilebeatPiloter) Start() error {
 
 	go func() {
 		log.Infof("filebeat started: %v", filebeat.Process.Pid)
-		err := filebeat.Wait()
-		if err != nil {
-			log.Errorf("filebeat exited: %v", err)
-			if exitError, ok := err.(*exec.ExitError); ok {
-				processState := exitError.ProcessState
-				log.Errorf("filebeat exited pid: %v", processState.Pid())
+		select {
+		case err := <- Func2Chan(filebeat.Wait):
+			if err != nil {
+				log.Errorf("filebeat exited: %v", err)
+				if exitError, ok := err.(*exec.ExitError); ok {
+					processState := exitError.ProcessState
+					log.Errorf("filebeat exited pid: %v", processState.Pid())
+				}
 			}
+	
+			// try to restart filebeat
+			log.Warningf("filebeat exited and try to restart")
+			filebeat = nil
+			p.Start()
+		case <- p.noticeStop:
+			return
 		}
+		// err := filebeat.Wait()
+		// if err != nil {
+		// 	log.Errorf("filebeat exited: %v", err)
+		// 	if exitError, ok := err.(*exec.ExitError); ok {
+		// 		processState := exitError.ProcessState
+		// 		log.Errorf("filebeat exited pid: %v", processState.Pid())
+		// 	}
+		// }
 
-		// try to restart filebeat
-		log.Warningf("filebeat exited and try to restart")
-		filebeat = nil
-		p.Start()
+		// // try to restart filebeat
+		// log.Warningf("filebeat exited and try to restart")
+		// filebeat = nil
+		// p.Start()
 	}()
 
 	// go p.watch(filebeat)

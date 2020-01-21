@@ -14,3 +14,14 @@ func ReadFile(path string, separator string) ([]string, error) {
 
 	return strings.Split(string(data), separator), nil
 }
+
+
+func Func2Chan(f func() error) <-chan error{
+	retChan := make(chan error)
+	go func(){
+		err := f()
+		c <- err 
+	}()
+
+	return retChan
+}
