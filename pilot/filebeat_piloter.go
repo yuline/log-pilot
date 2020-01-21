@@ -327,8 +327,8 @@ func (p *FilebeatPiloter) loadConfig(container string) (*Config, error) {
 		return nil, err
 	}
 
-	for _, pths := range configs {
-		paths = append(paths, pths...)
+	for _, c := range configs {
+		paths = append(paths, c.Paths...)
 	}
 	config.Paths = paths
 	return &config, nil
