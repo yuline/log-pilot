@@ -18,10 +18,10 @@ func ReadFile(path string, separator string) ([]string, error) {
 
 func Func2Chan(f func() error) <-chan error{
 	retChan := make(chan error)
-	go func(){
+	go func(c chan error){
 		err := f()
 		c <- err 
-	}()
+	}(retChan)
 
 	return retChan
 }

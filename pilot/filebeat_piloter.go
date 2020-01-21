@@ -42,6 +42,7 @@ type FilebeatPiloter struct {
 	watchDuration  time.Duration
 	watchContainer map[string]string
 	fbExit         chan struct{}
+	noticeStop     chan bool
 }
 
 // NewFilebeatPiloter returns a FilebeatPiloter instance
