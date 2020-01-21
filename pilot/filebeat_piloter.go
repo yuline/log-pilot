@@ -52,7 +52,7 @@ func NewFilebeatPiloter(baseDir string) (Piloter, error) {
 		baseDir:        baseDir,
 		watchDone:      make(chan bool),
 		watchContainer: make(map[string]string, 0),
-		watchDuration:  60 * time.Second,
+		watchDuration:  150 * time.Second,
 		fbExit:         make(chan struct{}),
 		noticeStop:     make(chan bool, 1),
 	}, nil
