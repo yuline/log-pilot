@@ -188,13 +188,17 @@ func (p *FilebeatPiloter) newScan() error {
 		return nil
 	}
 
-	log.Debug("Will delete conf: ", delConfs)
-	log.Debug("Will clean registry item: ", delLogs)
 	// 对filebeat进行container释放清理操作
 	p.Stop() //停止filebeat
 	<- p.fbExit  //等待filebeat退出
-	defer p.Start() 
+	defer func(){
+		time.Sleep(10 * time.Second)
+		p.Start()
+	}()
+	 
 
+	log.Debug("Will delete conf: ", delConfs)
+	log.Debug("Will clean registry item: ", delLogs)
 	b, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
 	origStates := make([]RegistryState, 0)
 	newStates := make([]RegistryState, 0)
