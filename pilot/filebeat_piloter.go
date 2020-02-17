@@ -222,7 +222,11 @@ func (p *FilebeatPiloter) newScan() error {
 
 	// 更新registry文件
 	for _, state := range origStates {
-		if container, ok := delLogs[state.Source]; !ok {
+		if !FileExist(state.Source){
+			//当前的文件已经被删除了，可能是未清理的过期配置
+			log.Debugf("logfile(%s) has been removed, the item could be deleted: %v", state.Source, state)
+			continue
+		}else if container, ok := delLogs[state.Source]; !ok {
 			//当前state不是destroying container的log，需要继续保留
 			newStates = append(newStates, state)
 		}else if _, ok := failDelContainers[container]; ok {
