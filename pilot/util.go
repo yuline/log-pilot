@@ -1,6 +1,7 @@
 package pilot
 
 import (
+	"os"
 	"io/ioutil"
 	"strings"
 )
