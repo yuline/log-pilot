@@ -123,7 +123,7 @@ func (p *FilebeatPiloter) watch() error {
 
 func (p *FilebeatPiloter) scan() error {
 	if len(p.watchContainer) == 0 {
-		reurn nil
+		return nil
 	}
 
 	//wait for other container in the same pod
@@ -172,7 +172,7 @@ func (p *FilebeatPiloter) scan() error {
 		log.Debug("Before restart piloter, the registry file is: ", string(registrys))
 		p.Start()
 		time.Sleep(2 * time.Second)
-		registrys, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
+		registrys, _ = ioutil.ReadFile(FILEBEAT_REGISTRY)
 		log.Debug("After restart piloter, the registry file is: ", string(registrys))
 	}()
 	 
