@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 	"syscall"
+	"sync"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/elastic/go-ucfg"
@@ -42,7 +43,8 @@ type FilebeatPiloter struct {
 	watchContainer map[string]string
 	fbExit         chan struct{}
 	noticeStop     chan bool
-	filebeat       *exec.Cmd      
+	filebeat       *exec.Cmd
+	mlock          *sync.Mutex 
 }
 
 // NewFilebeatPiloter returns a FilebeatPiloter instance
@@ -52,9 +54,9 @@ func NewFilebeatPiloter(baseDir string) (Piloter, error) {
 		baseDir:        baseDir,
 		watchDone:      make(chan bool),
 		watchContainer: make(map[string]string, 0),
-		watchDuration:  60 * time.Second,
+		watchDuration:  120 * time.Second,
 		fbExit:         make(chan struct{}),
-		noticeStop:     make(chan bool, 1),
+		noticeStop:     make(chan bool),
 	}, nil
 }
 
@@ -91,7 +93,7 @@ func (p *FilebeatPiloter) watch() error {
 	for {
 		select {
 		case <-p.watchDone:
-			log.Infof("%s watcher stop", p.Name())
+			log.Infof("%s watcher is stopping...", p.Name())
 			p.noticeStop <- true
 
 			//filebeat已经退出
@@ -120,6 +122,13 @@ func (p *FilebeatPiloter) watch() error {
 }
 
 func (p *FilebeatPiloter) scan() error {
+	if len(p.watchContainer) == 0 {
+		reurn nil
+	}
+
+	//wait for other container in the same pod
+	time.Sleep(3 * time.Second)
+
 	states, err := p.getRegsitryState()
 	if err != nil {
 		log.Error("Get registry error: ", err)
@@ -129,6 +138,8 @@ func (p *FilebeatPiloter) scan() error {
 	configPaths := p.loadConfigPaths()
 	delConfs := make(map[string]string)
 	delLogs := make(map[string]string)
+	
+	p.mlock.Lock()
 	log.Debug("Will scan containers: ", p.watchContainer)
 	for container := range p.watchContainer {
 		confPath := p.GetConfPath(container)
@@ -145,6 +156,8 @@ func (p *FilebeatPiloter) scan() error {
 			}
 		}
 	}
+	p.mlock.Unlock()
+
 	if len(delConfs) == 0 {
 		log.Debugf("No filebeat config will modify, current scan end")
 		return nil
@@ -154,8 +167,13 @@ func (p *FilebeatPiloter) scan() error {
 	p.Stop() //停止filebeat
 	<- p.fbExit  //等待filebeat退出
 	defer func(){
-		time.Sleep(10 * time.Second)
+		time.Sleep(2 * time.Second)
+		registrys, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
+		log.Debug("Before restart piloter, the registry file is: ", string(registrys))
 		p.Start()
+		time.Sleep(2 * time.Second)
+		registrys, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
+		log.Debug("After restart piloter, the registry file is: ", string(registrys))
 	}()
 	 
 
@@ -203,7 +221,8 @@ func (p *FilebeatPiloter) scan() error {
 	log.Debug("Update registry: ")
 	log.Debug("Orig registry: ", origStates)
 	log.Debug("New registry: ", newStates)
-	return ioutil.WriteFile(FILEBEAT_REGISTRY, nb, 0600)
+	err = ioutil.WriteFile(FILEBEAT_REGISTRY, nb, 0600)
+	return err
 }
 
 func (p *FilebeatPiloter) canRemoveConf(container string, registry map[string]RegistryState,
@@ -325,10 +344,12 @@ func (p *FilebeatPiloter) getRegsitryState() (map[string]RegistryState, error) {
 }
 
 func (p *FilebeatPiloter) feed(containerID string) error {
+	p.mlock.Lock()
 	if _, ok := p.watchContainer[containerID]; !ok {
 		p.watchContainer[containerID] = containerID
 		log.Infof("begin to watch log config: %s.yml", containerID)
 	}
+	p.mlock.Unlock()
 	return nil
 }
 
