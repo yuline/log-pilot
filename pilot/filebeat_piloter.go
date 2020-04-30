@@ -44,7 +44,7 @@ type FilebeatPiloter struct {
 	fbExit         chan struct{}
 	noticeStop     chan bool
 	filebeat       *exec.Cmd
-	mlock          *sync.Mutex 
+	mlock          sync.Mutex 
 }
 
 // NewFilebeatPiloter returns a FilebeatPiloter instance
