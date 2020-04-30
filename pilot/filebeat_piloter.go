@@ -31,7 +31,6 @@ const (
 	ENV_FILEBEAT_OUTPUT = "FILEBEAT_OUTPUT"
 )
 
-var filebeat *exec.Cmd
 var _ Piloter = (*FilebeatPiloter)(nil)
 
 // FilebeatPiloter for filebeat plugin
@@ -43,6 +42,7 @@ type FilebeatPiloter struct {
 	watchContainer map[string]string
 	fbExit         chan struct{}
 	noticeStop     chan bool
+	filebeat       *exec.Cmd      
 }
 
 // NewFilebeatPiloter returns a FilebeatPiloter instance
@@ -86,7 +86,7 @@ type RegistryState struct {
 }
 
 
-func (p *FilebeatPiloter) watch(cmd *exec.Cmd) error {
+func (p *FilebeatPiloter) watch() error {
 	log.Infof("%s watcher start", p.Name())
 	for {
 		select {
@@ -94,9 +94,14 @@ func (p *FilebeatPiloter) watch(cmd *exec.Cmd) error {
 			log.Infof("%s watcher stop", p.Name())
 			p.noticeStop <- true
 
-			err := cmd.Process.Kill()
+			//filebeat已经退出
+			if p.filebeat == nil {
+				return nil 
+			}
+			
+			err := p.filebeat.Process.Kill()
 			if err != nil {
-				pgroup := 0 - cmd.Process.Pid
+				pgroup := 0 - p.filebeat.Process.Pid
 				syscall.Kill(pgroup, syscall.SIGKILL)
 			}
 			time.Sleep(3 * time.Second) // wait a little
@@ -124,7 +129,7 @@ func (p *FilebeatPiloter) scan() error {
 	configPaths := p.loadConfigPaths()
 	delConfs := make(map[string]string)
 	delLogs := make(map[string]string)
-	log.Debug("Will delete containers: ", p.watchContainer)
+	log.Debug("Will scan containers: ", p.watchContainer)
 	for container := range p.watchContainer {
 		confPath := p.GetConfPath(container)
 		if _, err := os.Stat(confPath); err != nil && os.IsNotExist(err) {
@@ -330,51 +335,65 @@ func (p *FilebeatPiloter) feed(containerID string) error {
 // Start starting and watching filebeat process
 func (p *FilebeatPiloter) Start() error {
 	log.Debug("Start the filebeat piloter")
+	if err := p.start(); err != nil{
+		return err
+	}
 
-	if filebeat != nil {
-		pid := filebeat.Process.Pid
+	go func() {
+		log.Infof("filebeat started: %v", p.filebeat.Process.Pid)
+		for {
+			select {
+			case err := <- Func2Chan(p.filebeat.Wait):
+				if err != nil {
+					log.Errorf("filebeat exited: %v", err)
+					if exitError, ok := err.(*exec.ExitError); ok {
+						processState := exitError.ProcessState
+						log.Errorf("filebeat exited pid: %v", processState.Pid())
+					}
+				}
+		
+				// try to restart filebeat
+				log.Warningf("filebeat exited and try to restart")
+				if err := p.start(); err != nil {
+					//启动失败，重启piloter，通知watchDone
+					p.Stop()
+				}
+			case <- p.noticeStop:
+				return
+			}
+		}
+	}()
+
+	go p.watch()
+	return nil
+}
+
+// start filebeat process
+func (p *FilebeatPiloter) start() error {
+	if p.filebeat != nil {
+		pid := p.filebeat.Process.Pid
 		process, err := os.FindProcess(pid)
 		if err == nil{
 			err = process.Signal(syscall.Signal(0))
 			if err == nil{
 				log.Infof("filebeat started, pid: %v", pid)
-				return fmt.Errorf(ERR_ALREADY_STARTED)
+				return err
 			}
 		}
 	}
 
+	p.filebeat = nil
 	log.Info("starting filebeat")
-	filebeat = exec.Command(FILEBEAT_EXEC_CMD, "-c", FILEBEAT_CONF_FILE)
-	filebeat.Stderr = os.Stderr
-	filebeat.Stdout = os.Stdout
-	err := filebeat.Start()
+	cmd := exec.Command(FILEBEAT_EXEC_CMD, "-c", FILEBEAT_CONF_FILE)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
+	err := cmd.Start()
 	if err != nil {
 		log.Errorf("filebeat start fail: %v", err)
+		return err
 	}
-
-	go func() {
-		log.Infof("filebeat started: %v", filebeat.Process.Pid)
-		select {
-		case err := <- Func2Chan(filebeat.Wait):
-			if err != nil {
-				log.Errorf("filebeat exited: %v", err)
-				if exitError, ok := err.(*exec.ExitError); ok {
-					processState := exitError.ProcessState
-					log.Errorf("filebeat exited pid: %v", processState.Pid())
-				}
-			}
-	
-			// try to restart filebeat
-			log.Warningf("filebeat exited and try to restart")
-			filebeat = nil
-			p.Start()
-		case <- p.noticeStop:
-			return
-		}
-	}()
-
-	go p.watch(filebeat)
-	return err
+	p.filebeat = cmd
+	return nil
 }
 
 // Stop log collection
