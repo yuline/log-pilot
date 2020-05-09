@@ -140,7 +140,6 @@ func (p *FilebeatPiloter) scan() error {
 	delLogs := make(map[string]string)
 	
 	p.mlock.Lock()
-	log.Debug("Will scan containers: ", p.watchContainer)
 	for container := range p.watchContainer {
 		confPath := p.GetConfPath(container)
 		if _, err := os.Stat(confPath); err != nil && os.IsNotExist(err) {
@@ -168,17 +167,11 @@ func (p *FilebeatPiloter) scan() error {
 	<- p.fbExit  //等待filebeat退出
 	defer func(){
 		time.Sleep(2 * time.Second)
-		registrys, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
-		log.Debug("Before restart piloter, the registry file is: ", string(registrys))
 		p.Start()
 		time.Sleep(2 * time.Second)
-		registrys, _ = ioutil.ReadFile(FILEBEAT_REGISTRY)
-		log.Debug("After restart piloter, the registry file is: ", string(registrys))
 	}()
 	 
 
-	log.Debug("Will delete conf: ", delConfs)
-	log.Debug("Will clean registry item: ", delLogs)
 	b, _ := ioutil.ReadFile(FILEBEAT_REGISTRY)
 	origStates := make([]RegistryState, 0)
 	newStates := make([]RegistryState, 0)
@@ -218,9 +211,6 @@ func (p *FilebeatPiloter) scan() error {
 	if err != nil {
 		return err
 	}
-	log.Debug("Update registry: ")
-	log.Debug("Orig registry: ", origStates)
-	log.Debug("New registry: ", newStates)
 	err = ioutil.WriteFile(FILEBEAT_REGISTRY, nb, 0600)
 	return err
 }
